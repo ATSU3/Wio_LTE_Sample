@@ -1,15 +1,19 @@
 #include <WioLTEforArduino.h>
 #include <stdio.h>
 
-#define INTERVAL        (60000)
-#define RECEIVE_TIMEOUT (10000)
-#define MAGNETIC_SWITCH_PIN (WIOLTE_D38)
+#define SEND_INTERVAL    (10000) // 10秒ごとにデータを送信
+#define RECEIVE_TIMEOUT  (10000) // 受信タイムアウト時間（このコードでは使用しませんが、将来のために残します）
+#define BUTTON_PIN       (WIOLTE_D38) // ボタンが接続されているピン
 
 WioLTE Wio;
+
+unsigned long lastSendTime = 0; // 最後にデータを送信した時刻を記録
+int buttonPressCount = 0; // ボタンが押された回数をカウント
 
 void setup() {
   delay(200);
 
+  SerialUSB.begin(9600);
   SerialUSB.println("");
   SerialUSB.println("--- START ---------------------------------------------------");
 
@@ -32,51 +36,42 @@ void setup() {
     return;
   }
 
-  // Initialize magnetic switch pin
-  pinMode(MAGNETIC_SWITCH_PIN, INPUT);
+  // ボタンピンを入力として初期化
+  pinMode(BUTTON_PIN, INPUT);
+  lastSendTime = millis(); // タイマーをリセット
 
   SerialUSB.println("### Setup completed.");
 }
 
 void loop() {
-  char data[100];
-
-  // Read magnetic switch state
-  int switchState = digitalRead(MAGNETIC_SWITCH_PIN);
-
-  SerialUSB.print("Magnetic switch state = ");
-  SerialUSB.println(switchState);
-
-  // Prepare data for sending
-  sprintf(data,"{\"magneticSwitch\":%d}", switchState);
-
-  SerialUSB.println("### Open.");
-  int connectId;
-  connectId = Wio.SocketOpen("harvest.soracom.io", 8514, WIOLTE_UDP);
-  if (connectId < 0) {
-    SerialUSB.println("### ERROR! ###");
-    goto err;
+  // ボタンの状態をチェック
+  if (digitalRead(BUTTON_PIN) == HIGH) { // ボタンが押された場合
+    buttonPressCount++; // カウントを増やす
+    delay(10); // デバウンス用の短い遅延
+    while(digitalRead(BUTTON_PIN) == HIGH); // ボタンが離されるのを待つ
   }
 
-  SerialUSB.println("### Send.");
-  SerialUSB.print("Send:");
-  SerialUSB.print(data);
-  SerialUSB.println("");
-  if (!Wio.SocketSend(connectId, data)) {
-    SerialUSB.println("### ERROR! ###");
-    goto err_close;
+  // 10秒ごとにカウント値を送信
+  if (millis() - lastSendTime >= SEND_INTERVAL) {
+    char data[64];
+    sprintf(data, "{\"buttonPressCount\":%d}", buttonPressCount);
+
+    SerialUSB.println("Sending data to Soracom Harvest...");
+    SerialUSB.println(data);
+
+    int connectId = Wio.SocketOpen("harvest.soracom.io", 8514, WIOLTE_UDP);
+    if (connectId >= 0) {
+      if (Wio.SocketSend(connectId, data)) {
+        SerialUSB.println("Data sent successfully");
+      } else {
+        SerialUSB.println("Failed to send data");
+      }
+      Wio.SocketClose(connectId);
+    } else {
+      SerialUSB.println("Failed to open socket");
+    }
+
+    buttonPressCount = 0; // カウンターをリセット
+    lastSendTime = millis(); // タイマーをリセット
   }
-
-  // Rest of the code remains the same...
-
-  // Error handling and delay
-err_close:
-  SerialUSB.println("### Close.");
-  if (!Wio.SocketClose(connectId)) {
-    SerialUSB.println("### ERROR! ###");
-    goto err;
-  }
-
-err:
-  delay(INTERVAL);
 }
