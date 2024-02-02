@@ -1,19 +1,17 @@
 #include <WioLTEforArduino.h>
 #include <stdio.h>
 
-#define SEND_INTERVAL    (10000) // 10秒ごとにデータを送信
-#define RECEIVE_TIMEOUT  (10000) // 受信タイムアウト時間（このコードでは使用しませんが、将来のために残します）
-#define BUTTON_PIN       (WIOLTE_D38) // ボタンが接続されているピン
+#define INTERVAL            (10000)
+#define RECEIVE_TIMEOUT     (10000)
+#define MAGNETIC_SWITCH_PIN (WIOLTE_D38) // 磁気スイッチのピン定義
 
 WioLTE Wio;
-
-unsigned long lastSendTime = 0; // 最後にデータを送信した時刻を記録
-int buttonPressCount = 0; // ボタンが押された回数をカウント
 
 void setup() {
   delay(200);
 
-  SerialUSB.begin(9600);
+  SerialUSB.begin(115200);
+  while (!SerialUSB); // For Native USB
   SerialUSB.println("");
   SerialUSB.println("--- START ---------------------------------------------------");
 
@@ -24,54 +22,68 @@ void setup() {
   Wio.PowerSupplyLTE(true);
   delay(500);
 
-  SerialUSB.println("### Turn on or reset.");
+  pinMode(MAGNETIC_SWITCH_PIN, INPUT); // 磁気センサのピンを入力として初期化
+
   if (!Wio.TurnOnOrReset()) {
     SerialUSB.println("### ERROR! ###");
     return;
   }
 
-  SerialUSB.println("### Connecting to \"soracom.io\".");
   if (!Wio.Activate("soracom.io", "sora", "sora")) {
     SerialUSB.println("### ERROR! ###");
     return;
   }
 
-  // ボタンピンを入力として初期化
-  pinMode(BUTTON_PIN, INPUT);
-  lastSendTime = millis(); // タイマーをリセット
-
   SerialUSB.println("### Setup completed.");
 }
 
 void loop() {
-  // ボタンの状態をチェック
-  if (digitalRead(BUTTON_PIN) == HIGH) { // ボタンが押された場合
-    buttonPressCount++; // カウントを増やす
-    delay(10); // デバウンス用の短い遅延
-    while(digitalRead(BUTTON_PIN) == HIGH); // ボタンが離されるのを待つ
+  int switchState = digitalRead(MAGNETIC_SWITCH_PIN);
+  char data[100];
+  sprintf(data, "{\"switchState\":%d}", switchState);
+
+  SerialUSB.println("### Attempting to send data.");
+  if (!sendDataToSoracom(data)) {
+    SerialUSB.println("### Sending data failed. Attempting to reconnect.");
+    reconnect();
   }
 
-  // 10秒ごとにカウント値を送信
-  if (millis() - lastSendTime >= SEND_INTERVAL) {
-    char data[64];
-    sprintf(data, "{\"buttonPressCount\":%d}", buttonPressCount);
+  delay(INTERVAL);
+}
 
-    SerialUSB.println("Sending data to Soracom Harvest...");
-    SerialUSB.println(data);
-
-    int connectId = Wio.SocketOpen("harvest.soracom.io", 8514, WIOLTE_UDP);
-    if (connectId >= 0) {
-      if (Wio.SocketSend(connectId, data)) {
-        SerialUSB.println("Data sent successfully");
-      } else {
-        SerialUSB.println("Failed to send data");
-      }
-      Wio.SocketClose(connectId);
-    } else {
-      SerialUSB.println("Failed to open socket");
-    }
-
-    buttonPressCount = 0; // カウンターをリセット
-    lastSendTime = millis(); // タイマーをリセット
+bool sendDataToSoracom(const char* data) {
+  int connectId = Wio.SocketOpen("harvest.soracom.io", 8514, WIOLTE_UDP);
+  if (connectId < 0) {
+    SerialUSB.println("### ERROR opening socket!");
+    return false;
   }
+
+  if (!Wio.SocketSend(connectId, data)) {
+    SerialUSB.println("### ERROR sending data!");
+    Wio.SocketClose(connectId);
+    return false;
+  }
+
+  Wio.SocketClose(connectId);
+  SerialUSB.println("### Data sent successfully.");
+  return true;
+}
+
+void reconnect() {
+  Wio.PowerSupplyLTE(false); // LTEモジュールの電源をOFF
+  delay(1000); // 少し待つ
+  Wio.PowerSupplyLTE(true); // LTEモジュールの電源をON
+  delay(1000); // モジュールが起動するのを待つ
+
+  if (!Wio.TurnOnOrReset()) {
+    SerialUSB.println("### ERROR during TurnOnOrReset.");
+    return;
+  }
+
+  if (!Wio.Activate("soracom.io", "sora", "sora")) {
+    SerialUSB.println("### ERROR during Activate.");
+    return;
+  }
+
+  SerialUSB.println("### Reconnected.");
 }
