@@ -8,7 +8,10 @@ GroveUltrasonicRanger Ranger(&Board.D38);
 
 void setup() {
   Wio.Init();
+  console.begin(9600);
+  while (!console); // コンソールが利用可能になるまで待機
   console.println("--- START");
+
   Board.D38.Enable();
   Ranger.Init();
 
@@ -29,25 +32,39 @@ void setup() {
   }
 }
 
-#define MEASUREMENT_INTERVAL 10000 // 1 minute in milliseconds
+#define MEASUREMENT_INTERVAL 10000 // 測定間隔（ミリ秒）
 
 void loop() {
-  // Measure the distance to the water surface
+  // 水面までの距離を測定
   Ranger.Read();
   float distance = Ranger.Distance;
-  console.print("Water level distance: "); console.println(distance);
+  console.print("Water level distance: ");
+  console.println(distance, 2); // 小数点以下2桁で表示
 
-  // Send the data to Soracom
-  char payload[100];
-  int res_code;
-  sprintf(payload, "{\"water_level\":%.2f}", distance);
-  if (!Wio.HttpPost("http://uni.soracom.io", payload, &res_code)) {
-    console.println("### ERROR! ###");
-  } else {
-    console.print("Data sent. Status: ");
-    console.println(res_code);
+  // Soracomへデータを送信
+  char data[64];
+  sprintf(data, "{\"water_level\":%.2f}", distance);
+
+  console.println("### Opening socket.");
+  int connectId = Wio.SocketOpen("uni.soracom.io", 23080, WIOLTE_UDP);
+  if (connectId < 0) {
+    console.println("### ERROR: Failed to open socket.");
+    return;
   }
 
-  // Wait for next measurement
+  console.println("### Sending data.");
+  if (!Wio.SocketSend(connectId, data)) {
+    console.println("### ERROR: Failed to send data.");
+  } else {
+    console.println("Data sent successfully.");
+  }
+
+  // ソケットを閉じる
+  console.println("### Closing socket.");
+  if (!Wio.SocketClose(connectId)) {
+    console.println("### ERROR: Failed to close socket.");
+  }
+
+  // 次の測定まで待機
   delay(MEASUREMENT_INTERVAL);
 }
