@@ -35,15 +35,14 @@ void setup() {
 #define MEASUREMENT_INTERVAL 10000 // 測定間隔（ミリ秒）
 
 void loop() {
-  // 水面までの距離を測定
   Ranger.Read();
   float distance = Ranger.Distance;
-  console.print("Water level distance: ");
+  console.print("distance: ");
   console.println(distance, 2); // 小数点以下2桁で表示
 
   // Soracomへデータを送信
   char data[64];
-  sprintf(data, "{\"water_level\":%.2f}", distance);
+  sprintf(data, "{\"distance\":%.2f}", distance);
 
   console.println("### Opening socket.");
   int connectId = Wio.SocketOpen("uni.soracom.io", 23080, WIOLTE_UDP);
