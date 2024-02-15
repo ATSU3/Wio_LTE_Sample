@@ -79,7 +79,7 @@ void loop() {
     SerialUSB.println(data);
 
     // Soracom HarvestにUDPで送信するためのソケットをオープン
-    int connectId = Wio.SocketOpen("harvest.soracom.io", 8514, WIOLTE_UDP);
+    int connectId = Wio.SocketOpen("uni.soracom.io", 23080, WIOLTE_UDP);
     // ソケットオープンに成功した場合
     if (connectId >= 0) {
       // データ送信を試み、成功したかどうかをチェック
