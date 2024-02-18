@@ -1,0 +1,13 @@
+//不快指数の公式
+float discomfortIndex = 0.81 * temperature + 0.01 * humidity * (0.99 * temperature - 14.3) + 46.3;
+
+
+//シリアルモニタに表示するための記述
+console.print("C  Discomfort Index: ");
+console.println(discomfortIndex);
+
+//送信するデータ容量の箱を大きくする
+char data[80];
+
+//SORACOM Harvestに温度と湿度と合わせて不快指数を送る記述
+ sprintf(data, "{\"temp\":%.2f,\"humi\":%.2f,\"discomfortIndex\":%.2f}", temperature, humidity, discomfortIndex);
